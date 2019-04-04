@@ -1,0 +1,51 @@
+#!/bin/bash
+#	keygit - Manage keepass keystores using git
+#	Copyright (C) 2019-2019 Johannes Bauer
+#
+#	This file is part of keygit.
+#
+#	keygit is free software; you can redistribute it and/or modify
+#	it under the terms of the GNU General Public License as published by
+#	the Free Software Foundation; this program is ONLY licensed under
+#	version 3 of the License, later versions are explicitly excluded.
+#
+#	keygit is distributed in the hope that it will be useful,
+#	but WITHOUT ANY WARRANTY; without even the implied warranty of
+#	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#	GNU General Public License for more details.
+#
+#	You should have received a copy of the GNU General Public License
+#	along with keygit; if not, write to the Free Software
+#	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+#	Johannes Bauer <JohannesBauer@gmx.de>
+
+KEYGIT_DIR="${HOME}/.keygit"
+KEYGIT_BIN="${KEYGIT_DIR}/keygit"
+KEY_FILENAME="${KEYGIT_DIR}/key.json"
+ENC_DB_FILE="${HOME}/.keygit/db/keypass.enc"
+ENCDEC="${KEYGIT_DIR}/encdec/encdec"
+
+if [ ! -d "$KEYGIT_DIR" ]; then
+	echo "No such keygit directory: $KEYGIT_DIR"
+	exit 1
+fi
+
+if [ ! -f "$ENC_DB_FILE" ]; then
+	echo "Database file does not exist: ${ENC_DB_FILE}"
+	echo "Manually import it: ${KEYGIT_BIN} -i import.kdbx -e ${ENCDEC} ${KEY_FILENAME} ${ENC_DB_FILE}"
+	exit 1
+fi
+
+if [ ! -f "$KEY_FILENAME" ]; then
+	echo "Key file does not exist: $KEY_FILENAME"
+	echo "Manually create it: ${ENCDEC} -e -k ${KEY_FILENAME} --gen-keyfile /dev/null /dev/null"
+	exit 1
+fi
+
+if [ ! -x "$ENCDEC" ]; then
+	echo "Could not find encdec utility: $ENCDEC"
+	exit 1
+fi
+	
+"${KEYGIT_BIN}" -e "${ENCDEC}" "${KEY_FILENAME}" "${ENC_DB_FILE}"

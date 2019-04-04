@@ -1,0 +1,91 @@
+#!/usr/bin/python3
+#	keygit - Manage keepass keystores using git
+#	Copyright (C) 2019-2019 Johannes Bauer
+#
+#	This file is part of keygit.
+#
+#	keygit is free software; you can redistribute it and/or modify
+#	it under the terms of the GNU General Public License as published by
+#	the Free Software Foundation; this program is ONLY licensed under
+#	version 3 of the License, later versions are explicitly excluded.
+#
+#	keygit is distributed in the hope that it will be useful,
+#	but WITHOUT ANY WARRANTY; without even the implied warranty of
+#	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#	GNU General Public License for more details.
+#
+#	You should have received a copy of the GNU General Public License
+#	along with keygit; if not, write to the Free Software
+#	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+#	Johannes Bauer <JohannesBauer@gmx.de>
+
+import os
+import sys
+import tempfile
+import shutil
+import json
+import subprocess
+import hashlib
+from FriendlyArgumentParser import FriendlyArgumentParser
+
+parser = FriendlyArgumentParser()
+parser.add_argument("-i", "--import-file", metavar = "filename", type = str, help = "When initially bootstrapping a database, gives the file to be imported as keepass database.")
+parser.add_argument("-e", "--encdec-bin", metavar = "filename", type = str, default = "encdec", help = "Gives path to the encdec encryption/decryption tool. Defaults to %(default)s.")
+parser.add_argument("-k", "--keepass-bin", metavar = "filename", type = str, default = "keepassx", help = "Gives path to the keypass tool. Defaults to %(default)s.")
+parser.add_argument("-t", "--tempdir", metavar = "dirname", type = str, default = "/dev/shm", help = "Gives path to the temporary directory. Defaults to %(default)s.")
+parser.add_argument("--no-mnt-checks", action = "store_true", help = "Do not check that tempdir points to a tmpfs mountpoint.")
+parser.add_argument("keyfile", metavar = "filename", type = str, help = "Gives the JSON key filename.")
+parser.add_argument("keypassfile", metavar = "filename", type = str, help = "Gives the encrypted keypass filename.")
+args = parser.parse_args(sys.argv[1:])
+
+if not args.no_mnt_checks:
+	if not os.path.ismount(args.tempdir):
+		print("Not a mount point: %s" % (args.tempdir), file = sys.stderr)
+		sys.exit(1)
+	fs = None
+	with open("/proc/mounts") as f:
+		for line in f:
+			line = line.split()
+			if (len(line) >= 3) and (line[1] == args.tempdir):
+				fs = line[2]
+	if fs != "tmpfs":
+		print("Not tmpfs: %s" % (args.tempdir), file = sys.stderr)
+		sys.exit(1)
+
+def calc_hash(filename):
+	with open(filename, "rb") as f:
+		return hashlib.sha256(f.read()).hexdigest()
+
+os.umask(0o077)
+with tempfile.NamedTemporaryFile(dir = args.tempdir, prefix = "keepass_", suffix = ".kdbx") as f:
+	if args.import_file:
+		if not os.path.isfile(args.import_file):
+			print("No such file: %s" % (args.import_file), file = sys.stderr)
+			sys.exit(1)
+		if os.path.exists(args.keypassfile):
+			print("Refusing to overwrite: %s" % (args.keypassfile), file = sys.stderr)
+			sys.exit(1)
+		if os.path.exists(args.keyfile):
+			subprocess.check_call([ args.encdec_bin, "--encrypt", "--force", "--keyfile", args.keyfile, args.import_file, args.keypassfile ])
+		else:
+			subprocess.check_call([ args.encdec_bin, "--encrypt", "--force", "--keyfile", args.keyfile, "--gen-keyfile", args.import_file, args.keypassfile ])
+		do_commit = True
+	else:
+		subprocess.check_call([ args.encdec_bin, "--decrypt", "--force", "--keyfile", args.keyfile, args.keypassfile, f.name ])
+		previous_hash = calc_hash(f.name)
+		subprocess.check_call([ args.keepass_bin, f.name ])
+		current_hash = calc_hash(f.name)
+		do_commit = current_hash != previous_hash
+		if do_commit:
+			subprocess.check_call([ args.encdec_bin, "--encrypt", "--force", "--keyfile", args.keyfile, f.name, args.keypassfile ])
+		else:
+			print("Unchanged, not re-encrypting.", file = sys.stderr)
+
+	if do_commit:
+		full_keypassfile = os.path.realpath(args.keypassfile)
+		os.chdir(os.path.dirname(args.keypassfile))
+		subprocess.check_call([ "git", "add", full_keypassfile ])
+		hostname = subprocess.check_output([ "hostname" ]).decode().rstrip("\r\n")
+		subprocess.check_call([ "git", "commit", "-m", "Change on %s" % (hostname), full_keypassfile ])
+		subprocess.check_call([ "git", "push" ])
