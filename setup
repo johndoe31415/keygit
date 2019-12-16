@@ -1,0 +1,67 @@
+#!/usr/bin/python3
+#	keygit - Manage keepass keystores using git
+#	Copyright (C) 2019-2019 Johannes Bauer
+#
+#	This file is part of keygit.
+#
+#	keygit is free software; you can redistribute it and/or modify
+#	it under the terms of the GNU General Public License as published by
+#	the Free Software Foundation; this program is ONLY licensed under
+#	version 3 of the License, later versions are explicitly excluded.
+#
+#	keygit is distributed in the hope that it will be useful,
+#	but WITHOUT ANY WARRANTY; without even the implied warranty of
+#	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#	GNU General Public License for more details.
+#
+#	You should have received a copy of the GNU General Public License
+#	along with keygit; if not, write to the Free Software
+#	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+#	Johannes Bauer <JohannesBauer@gmx.de>
+
+import os
+import sys
+import contextlib
+import subprocess
+from FriendlyArgumentParser import FriendlyArgumentParser
+
+parser = FriendlyArgumentParser()
+parser.add_argument("-l", "--local-dir", metavar = "dirname", type = str, default = "~/.keepass/keycloud", help = "Gives the local git directory name. Defaults to %(default)s.")
+parser.add_argument("-o", "--output", metavar = "output-opener", type = str, default = "keepassedit", help = "Gives the output executable name. Defaults to %(default)s.")
+parser.add_argument("encdec_bin", metavar = "encdec-file", type = str, help = "Gives the executable of encdec.")
+parser.add_argument("remote_git", metavar = "git-uri", type = str, help = "Gives the remote git storage directory.")
+args = parser.parse_args(sys.argv[1:])
+
+if not os.path.isfile(args.encdec_bin):
+	print("No such file: %s" % (args.encdec_bin))
+	sys.exit(1)
+
+if os.path.isfile(args.output):
+	print("Refusing to overwrite: %s" % (args.output))
+	sys.exit(1)
+
+# Clone repo first
+local_git_directory = os.path.realpath(os.path.expanduser(args.local_dir))
+with contextlib.suppress(FileExistsError):
+	os.makedirs(local_git_directory)
+subprocess.check_call([ "git", "clone", args.remote_git, local_git_directory ])
+
+# Then derive master key
+encdec_binary = os.path.realpath(os.path.expanduser(args.encdec_bin))
+local_key_filename = os.path.realpath(local_git_directory + "/key")
+#subprocess.check_call([ encdec_binary, "--force", "--gen-keyfile", "--keyfile", local_key_filename, "--decrypt", local_git_directory + "/db", "/dev/null" ])
+
+def escape(name):
+	return name.replace("\"", "\\\"")
+
+# Finally create opening script
+with open(args.output, "w") as f:
+	keygit_binary = os.path.realpath(os.path.dirname(__file__) + "/keygit")
+	print("#!/bin/bash", file = f)
+	print("# File was auto-created, DO NOT EDIT.", file = f)
+	print("KEYGIT_BINARY=\"%s\"" % (escape(keygit_binary)), file = f)
+	print("ENCDEC_BINARY=\"%s\"" % (escape(encdec_binary)), file = f)
+	print("LOCAL_GIT_DIR=\"%s\"" % (escape(local_git_directory)), file = f)
+	print("\"${KEYGIT_BINARY}\" -e \"${ENCDEC_BINARY}\" \"${LOCAL_GIT_DIR}/key\" \"${LOCAL_GIT_DIR}/db\"", file = f)
+os.chmod(args.output, 0o755)
