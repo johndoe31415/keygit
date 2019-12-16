@@ -50,7 +50,7 @@ subprocess.check_call([ "git", "clone", args.remote_git, local_git_directory ])
 # Then derive master key
 encdec_binary = os.path.realpath(os.path.expanduser(args.encdec_bin))
 local_key_filename = os.path.realpath(local_git_directory + "/key")
-#subprocess.check_call([ encdec_binary, "--force", "--gen-keyfile", "--keyfile", local_key_filename, "--decrypt", local_git_directory + "/db", "/dev/null" ])
+subprocess.check_call([ encdec_binary, "--force", "--gen-keyfile", "--keyfile", local_key_filename, "--decrypt", local_git_directory + "/db", "/dev/null" ])
 
 def escape(name):
 	return name.replace("\"", "\\\"")
