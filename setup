@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #	keygit - Manage keepass keystores using git
-#	Copyright (C) 2019-2019 Johannes Bauer
+#	Copyright (C) 2019-2021 Johannes Bauer
 #
 #	This file is part of keygit.
 #
@@ -43,9 +43,12 @@ if os.path.isfile(args.output):
 
 # Clone repo first
 local_git_directory = os.path.realpath(os.path.expanduser(args.local_dir))
-with contextlib.suppress(FileExistsError):
-	os.makedirs(local_git_directory)
-subprocess.check_call([ "git", "clone", args.remote_git, local_git_directory ])
+if not os.path.isdir(local_git_directory):
+	with contextlib.suppress(FileExistsError):
+		os.makedirs(local_git_directory)
+	subprocess.check_call([ "git", "clone", args.remote_git, local_git_directory ])
+else:
+	print("Not cloning, directory already exists: %s" % (local_git_directory))
 
 # Then derive master key
 encdec_binary = os.path.realpath(os.path.expanduser(args.encdec_bin))
