@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #	keygit - Manage keepass keystores using git
-#	Copyright (C) 2019-2020 Johannes Bauer
+#	Copyright (C) 2019-2022 Johannes Bauer
 #
 #	This file is part of keygit.
 #
@@ -30,6 +30,7 @@ import hashlib
 from FriendlyArgumentParser import FriendlyArgumentParser
 
 parser = FriendlyArgumentParser()
+parser.add_argument("-n", "--no-update", action = "store_true", help = "Do not try to pull from Git initially.")
 parser.add_argument("-i", "--import-file", metavar = "filename", type = str, help = "When initially bootstrapping a database, gives the file to be imported as keepass database.")
 parser.add_argument("-e", "--encdec-bin", metavar = "filename", type = str, default = "encdec", help = "Gives path to the encdec encryption/decryption tool. Defaults to %(default)s.")
 parser.add_argument("-k", "--keepass-bin", metavar = "filename", type = str, default = "keepassxc", help = "Gives path to the keypass tool. Defaults to %(default)s.")
@@ -85,7 +86,8 @@ with tempfile.NamedTemporaryFile(dir = args.tempdir, prefix = "keepass_", suffix
 	else:
 		full_keypassfile = os.path.realpath(args.keypassfile)
 		os.chdir(os.path.dirname(args.keypassfile))
-		subprocess.check_call([ "git", "pull" ])
+		if not args.no_update:
+			subprocess.check_call([ "git", "pull" ])
 
 		subprocess.check_call([ args.encdec_bin, "--decrypt", "--force", "--keyfile", args.keyfile, args.keypassfile, f.name ])
 		previous_hash = calc_hash(f.name)
