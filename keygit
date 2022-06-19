@@ -30,6 +30,8 @@ import hashlib
 from FriendlyArgumentParser import FriendlyArgumentParser
 
 parser = FriendlyArgumentParser()
+parser.add_argument("--consecutive-check-count", metavar = "count", type = int, default = 3, help = "How many consecutive different new hashes need to be present for keegit to commit. Defaults to %(default)d.")
+parser.add_argument("--check-interval-secs", metavar = "secs", type = int, default = 3, help = "How many seconds per check of the file has changed. Defaults to %(default)d seconds.")
 parser.add_argument("-n", "--no-update", action = "store_true", help = "Do not try to pull from Git initially.")
 parser.add_argument("-i", "--import-file", metavar = "filename", type = str, help = "When initially bootstrapping a database, gives the file to be imported as keepass database.")
 parser.add_argument("-e", "--encdec-bin", metavar = "filename", type = str, default = "encdec", help = "Gives path to the encdec encryption/decryption tool. Defaults to %(default)s.")
@@ -57,6 +59,20 @@ if not args.no_mnt_checks:
 def calc_hash(filename):
 	with open(filename, "rb") as f:
 		return hashlib.sha256(f.read()).hexdigest()
+
+
+def commit_keypassfile():
+	subprocess.check_call([ args.encdec_bin, "--encrypt", "--force", "--keyfile", args.keyfile, f.name, args.keypassfile ])
+
+	full_keypassfile = os.path.realpath(args.keypassfile)
+	os.chdir(os.path.dirname(args.keypassfile))
+	subprocess.check_call([ "git", "add", full_keypassfile ])
+	if os.path.isfile(".gitignore"):
+		subprocess.check_call([ "git", "add", ".gitignore" ])
+	hostname = subprocess.check_output([ "hostname" ]).decode().rstrip("\r\n")
+	subprocess.check_call([ "git", "commit", "-m", "Change on %s" % (hostname), full_keypassfile ])
+	subprocess.check_call([ "git", "push" ])
+
 
 os.umask(0o077)
 with tempfile.NamedTemporaryFile(dir = args.tempdir, prefix = "keepass_", suffix = ".kdbx") as f:
@@ -97,20 +113,26 @@ with tempfile.NamedTemporaryFile(dir = args.tempdir, prefix = "keepass_", suffix
 
 		subprocess.check_call([ args.encdec_bin, "--decrypt", "--force", "--keyfile", args.keyfile, args.keypassfile, f.name ])
 		previous_hash = calc_hash(f.name)
-		subprocess.check_call([ args.keepass_bin, f.name ])
-		current_hash = calc_hash(f.name)
-		do_commit = current_hash != previous_hash
-		if do_commit:
-			subprocess.check_call([ args.encdec_bin, "--encrypt", "--force", "--keyfile", args.keyfile, f.name, args.keypassfile ])
-		else:
-			print("Unchanged, not re-encrypting.", file = sys.stderr)
 
-	if do_commit:
-		full_keypassfile = os.path.realpath(args.keypassfile)
-		os.chdir(os.path.dirname(args.keypassfile))
-		subprocess.check_call([ "git", "add", full_keypassfile ])
-		if os.path.isfile(".gitignore"):
-			subprocess.check_call([ "git", "add", ".gitignore" ])
-		hostname = subprocess.check_output([ "hostname" ]).decode().rstrip("\r\n")
-		subprocess.check_call([ "git", "commit", "-m", "Change on %s" % (hostname), full_keypassfile ])
-		subprocess.check_call([ "git", "push" ])
+		hashes = [ previous_hash ] * args.consecutive_check_count
+		proc = subprocess.Popen([ args.keepass_bin, f.name ])
+		while True:
+			try:
+				proc.wait(timeout = args.check_interval_secs)
+				break
+			except subprocess.TimeoutExpired:
+				pass
+
+			current_hash = calc_hash(f.name)
+			hashes.pop(0)
+			hashes.append(current_hash)
+			if (len(set(hashes)) == 1) and (hashes[0] != previous_hash):
+				print("Intermittent commit during running keepass process.")
+				commit_keypassfile()
+				previous_hash = hashes[0]
+
+		# Keepass has exited, one last check
+		current_hash = calc_hash(f.name)
+		if current_hash != previous_hash:
+			print("Final commit after exit of keepass process.")
+			commit_keypassfile()

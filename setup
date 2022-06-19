@@ -27,7 +27,7 @@ import subprocess
 from FriendlyArgumentParser import FriendlyArgumentParser
 
 parser = FriendlyArgumentParser()
-parser.add_argument("-l", "--local-dir", metavar = "dirname", type = str, default = "~/.keepass/keycloud", help = "Gives the local git directory name. Defaults to %(default)s.")
+parser.add_argument("-l", "--local-dir", metavar = "dirname", type = str, default = "~/.keygit", help = "Gives the local git directory name. Defaults to %(default)s.")
 parser.add_argument("-o", "--output", metavar = "output-opener", type = str, default = "keepassedit", help = "Gives the output executable name. Defaults to %(default)s.")
 parser.add_argument("encdec_bin", metavar = "encdec-file", type = str, help = "Gives the executable of encdec.")
 parser.add_argument("remote_git", metavar = "git-uri", type = str, help = "Gives the remote git storage directory.")
