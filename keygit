@@ -87,7 +87,13 @@ with tempfile.NamedTemporaryFile(dir = args.tempdir, prefix = "keepass_", suffix
 		full_keypassfile = os.path.realpath(args.keypassfile)
 		os.chdir(os.path.dirname(args.keypassfile))
 		if not args.no_update:
-			subprocess.check_call([ "git", "pull" ])
+			try:
+				subprocess.check_call([ "git", "pull" ])
+			except subprocess.CalledProcessError:
+				yn = input("Failed to pull from git. Continue (y/n)? ")
+				if yn.lower() != "y":
+					print("Aborting after failure to pull.", file = sys.stderr)
+					sys.exit(1)
 
 		subprocess.check_call([ args.encdec_bin, "--decrypt", "--force", "--keyfile", args.keyfile, args.keypassfile, f.name ])
 		previous_hash = calc_hash(f.name)
